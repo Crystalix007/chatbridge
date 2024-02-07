@@ -18,3 +18,4 @@ FROM gcr.io/distroless/static
 COPY --from=builder /app/app /app
 
 ENTRYPOINT ["/app"]
+EXPOSE "2024/tcp"
