@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
+	"strings"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -24,8 +24,6 @@ func New(token string, model string) ChatBridge {
 }
 
 func (c *ChatBridge) Chat(ctx context.Context, message string) (io.Reader, error) {
-	slog.InfoContext(ctx, "chatbridge: sending message", slog.Any("message", message))
-
 	c.messages = append(c.messages, openai.ChatCompletionMessage{
 		Content: message,
 		Role:    openai.ChatMessageRoleUser,
@@ -48,11 +46,17 @@ func (c *ChatBridge) Chat(ctx context.Context, message string) (io.Reader, error
 	go func() {
 		defer completion.Close()
 
+		c.messages = append(c.messages, openai.ChatCompletionMessage{
+			Role: openai.ChatMessageRoleAssistant,
+		})
+
 		for {
 			resp, err := completion.Recv()
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
+			c.messages[len(c.messages)-1].Content += resp.Choices[0].Delta.Content
 
 			if err != nil {
 				pipeWriter.CloseWithError(
@@ -74,4 +78,17 @@ func (c *ChatBridge) Chat(ctx context.Context, message string) (io.Reader, error
 	}()
 
 	return pipeReader, nil
+}
+
+func (c *ChatBridge) Messages() string {
+	var messages strings.Builder
+
+	for _, message := range c.messages {
+		messages.WriteString(fmt.Sprintf("%s:\n", message.Role))
+		messages.WriteString("\t")
+		messages.WriteString(message.Content)
+		messages.WriteString("\n")
+	}
+
+	return messages.String()
 }
